@@ -1,26 +1,64 @@
-function Set-Passwords {
-    param (
-        [string]$ul, # user list
-        [string]$pw  # password
-    )
-    # validate input
-    if(Get-Item $ul -is [System.IO.FileInfo]) {
-        break
-        else { Write-Error "Specified path does not point to a file!"}
+function Start-Utility {
+    Write-Host "Bulk Password Set Utility v1.3"
+    Get-Params
+}
+
+function Get-Params {
+
+    $CheckPassword = $true
+    while ($true) {
+        if ($CheckPassword) {
+            $InputPassword = Read-Host "Enter a password" -AsSecureString
+            if (Test-Password $InputPassword) {
+                # Write-Host "Password check successful!"
+                $CheckPassword = $false
+            } else {
+                Write-Host "Password check failed!" -ForegroundColor Red
+            }
+        } else {
+            $InputFilePath = Read-Host "Enter a file path"
+            if (Test-Path $InputFilePath -PathType Leaf) {
+                # Write-Host "Filepath check successful!"
+                [string[]]$InputFile = Get-Content $InputFilePath
+                Write-Output "Successfully added list containing $($InputFile.Length) users."
+                break
+            } else {
+                Write-Host "Filepath check failed!" -ForegroundColor Red
+            }
+        }
     }
-
-    [string[]] $uList = Get-Content -Path $ul # convert user list to array
-    $uCount = 0
-
-    ForEach($u in $uList) { $uCount++ } # get number of users in list, might use this data for a progress readout later
-
-    ForEach($u in $uList) {
-        $uObject = Get-ADUser -Filter 'Name -eq $u'
-        $uSAN = $uObject.SamAccountName
-        if($uObject) {
-            Set-ADAccountPassword -Identity $uSAN -Reset -NewPassword (ConvertTo-SecureString -AsPlainText $pw -Force)
-            Write-Line "Password for $u changed successfully."
-        } 
-        else { Write-Host "Failed to change password for $u!" -ForeGroundColor Red }
+    $YayOrNay = Read-Host "OK to run password set? (y/N)"
+    switch ($YayOrNay) {
+        "y" { Set-Passwords $InputPassword $InputFile }
+        default { Write-Host "Terminating." -ForegroundColor Red | exit }
     }
 }
+
+function Test-Password {
+    param (
+        [SecureString]$securePassword
+    )
+    $strPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword))
+    if ($strPassword -match '\d' -and $strPassword.Length -ge 8 ) { 
+        return $true 
+    }
+    return $false
+}
+
+function Set-Passwords {
+    params (
+        [SecureString]$Password,
+        [string[]]$UserList
+    )
+
+    ForEach($User in $UserList) {
+        $ActiveDirectoryUser = Get-ADUser -Filter 'Name -eq $User'
+        if($ActiveDirectoryUser) {
+            Set-ADAccountPassword -Identity $ActiveDirectoryUser.SamAccountName -Reset -NewPassword $Password -Force
+            Write-Output "Successfuly changed password for $User"
+        } else {
+            Write-Host "User $User not found!" -ForegroundColor Red
+        }
+    }
+}
+Start-Utility
