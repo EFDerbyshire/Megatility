@@ -1,4 +1,7 @@
+# Remove unnecessary test folders.
 dump/
 tests/
 
+# Ignore log files, keep log dir.
 logs/*
+!logs/.gitkeep
