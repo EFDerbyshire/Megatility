@@ -1,64 +1,53 @@
-function Start-Utility {
-    Write-Host "Bulk Password Set Utility v1.3"
-    Get-Params
+# Utility to update many users to the same password.
+function Start-SetPasswords {
+    Write-Host "Bulk Password Set Utility v1.1"
+    $InputPassword = Get-Password
+    $InputFile = Get-UserList
+    Confirm-PasswordSet $InputPassword $InputFile
 }
-
-function Get-Params {
-
-    $CheckPassword = $true
+function Get-Password {
     while ($true) {
-        if ($CheckPassword) {
-            $InputPassword = Read-Host "Enter a password" -AsSecureString
-            if (Test-Password $InputPassword) {
-                # Write-Host "Password check successful!"
-                $CheckPassword = $false
-            } else {
-                Write-Host "Password check failed!" -ForegroundColor Red
-            }
+        $InputPassword = Read-Host "Enter a password" -AsSecureString
+        if (Test-Password $InputPassword) {
+            return $InputPassword
         } else {
-            $InputFilePath = Read-Host "Enter a file path"
-            if (Test-Path $InputFilePath -PathType Leaf) {
-                # Write-Host "Filepath check successful!"
-                [string[]]$InputFile = Get-Content $InputFilePath
-                Write-Output "Successfully added list containing $($InputFile.Length) users."
-                break
-            } else {
-                Write-Host "Filepath check failed!" -ForegroundColor Red
-            }
+            Write-Host "Password check failed! Must contain a digit and be at least 8 characters." -ForegroundColor Red
         }
     }
-    $YayOrNay = Read-Host "OK to run password set? (y/N)"
-    switch ($YayOrNay) {
-        "y" { Set-Passwords $InputPassword $InputFile }
-        default { Write-Host "Terminating." -ForegroundColor Red | exit }
+}
+function Confirm-PasswordSet($InputPassword, $InputFile) {
+    $Confirmation = Read-Host "OK to run password set? This cannot be undone! (y/N)"
+    switch ($Confirmation) {
+        'y' { 
+            Set-Passwords -Password $InputPassword -UserList $InputFile 
+        }
+        default { 
+            Write-Host "Terminating." -ForegroundColor Red 
+            exit
+        }
     }
 }
-
-function Test-Password {
-    param (
-        [SecureString]$securePassword
-    )
-    $strPassword = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword))
-    if ($strPassword -match '\d' -and $strPassword.Length -ge 8 ) { 
-        return $true 
-    }
-    return $false
-}
-
 function Set-Passwords {
-    params (
+    param (
         [SecureString]$Password,
         [string[]]$UserList
     )
-
-    ForEach($User in $UserList) {
-        $ActiveDirectoryUser = Get-ADUser -Filter 'Name -eq $User'
-        if($ActiveDirectoryUser) {
+    $ErrorCount = 0
+    ForEach ($User in $UserList) {
+        $timestamp = Get-Date -Format "hh:MM:ss"
+        $ActiveDirectoryUser = Get-ADUser -Filter "SamAccountName -eq '$User'"
+        try {
+            if (-not $ActiveDirectoryUser) {
+                throw "User $User not found!"
+            }
             Set-ADAccountPassword -Identity $ActiveDirectoryUser.SamAccountName -Reset -NewPassword $Password -Force
-            Write-Output "Successfuly changed password for $User"
-        } else {
-            Write-Host "User $User not found!" -ForegroundColor Red
+            Write-Output "Successfully changed password for $User"
+        } 
+        catch {
+            Write-Host "$timestamp [ERROR] $($_)" -ForegroundColor Red
+            $ErrorCount++
         }
     }
+    Write-Host "Passwords changed for $($UserList.Length - $ErrorCount) / $($UserList.Length) users."
 }
-Start-Utility
+Start-SetPasswords
